@@ -432,6 +432,8 @@ cdef class ReactingSurface1D(Boundary1D):
         """Controls whether or not to solve the surface coverage equations."""
         def __set__(self, value):
             self.surf.enableCoverageEquations(<cbool>value)
+        def __get__(self):
+            return self.surf.coverageEnabled()
 
 
 cdef class _FlowBase(Domain1D):
@@ -561,27 +563,15 @@ cdef class _FlowBase(Domain1D):
                 else:
                     self.set_transient_tolerances(**tol)
 
-    def set_boundary_emissivities(self, e_left, e_right):
-        """
-        .. deprecated:: 2.5
-
-             To be deprecated with version 2.5, and removed thereafter.
-             Replaced by property `boundary_emissivities`.
-        """
-        warnings.warn("Method 'set_boundary_emissivities' to be removed after "
-                      "Cantera 2.5. Replaced by property "
-                      "'boundary_emissivities'", DeprecationWarning)
-        self.boundary_emissivities = e_left, e_right
-
     property boundary_emissivities:
         """ Set/get boundary emissivities. """
         def __get__(self):
             return self.flow.leftEmissivity(), self.flow.rightEmissivity()
         def __set__(self, tuple epsilon):
-            if len(epsilon) == 2:
-                self.flow.setBoundaryEmissivities(epsilon[0], epsilon[1])
-            else:
-                raise ValueError("Setter requires tuple of length 2.")
+            if len(epsilon) != 2:
+                raise ValueError('Setting the boundary emissivities requires a '
+                                 'tuple of length 2.')
+            self.flow.setBoundaryEmissivities(epsilon[0], epsilon[1])
 
     property radiation_enabled:
         """ Determines whether or not to include radiative heat transfer """
@@ -948,7 +938,8 @@ cdef class Sim1D:
 
     def collect_data(self, domain, other):
         """
-        Return data vector of domain *domain* as `SolutionArray` object
+        Return underlying data specifying a *domain*. Method is used as
+        a service function for export via `FlameBase.to_solution_array`.
 
         Derived classes set default values for *domain* and *other*, where
         defaults describe flow domain and essential non-thermodynamic solution
@@ -1003,7 +994,8 @@ cdef class Sim1D:
 
     def restore_data(self, domain, states, other_cols, meta):
         """
-        Restore data vector of domain *domain* from `SolutionArray` *states*.
+        Restore a *domain* from underlying data. Method is used as
+        a service function for import via `FlameBase.from_solution_array`.
 
         Derived classes set default values for *domain* and *other*, where
         defaults describe flow domain and essential non-thermodynamic solution
@@ -1014,6 +1006,8 @@ cdef class Sim1D:
         idom = self.domain_index(domain)
         dom = self.domains[idom]
         T, P, Y = states
+        if isinstance(P, np.ndarray) and P.size:
+            P = P[0]
 
         if isinstance(dom, _FlowBase):
             grid = other_cols['grid']
@@ -1034,7 +1028,7 @@ cdef class Sim1D:
                 self.set_profile(spc, xi, Y[:, i])
 
             # restore pressure
-            self.P = P[0]
+            self.P = P
 
             # restore settings
             dom.settings = meta
@@ -1382,21 +1376,6 @@ cdef class Sim1D:
     def set_max_time_step(self, tsmax):
         """ Set the maximum time step. """
         self.sim.setMaxTimeStep(tsmax)
-
-    def set_fixed_temperature(self, T):
-        """
-        Set the temperature used to fix the spatial location of a freely
-        propagating flame.
-
-        .. deprecated:: 2.5
-
-             To be deprecated with version 2.5, and removed thereafter.
-             Replaced by property `fixed_temperature`.
-        """
-        warnings.warn("Method 'set_fixed_temperature' to be removed after "
-                      "Cantera 2.5. Replaced by property 'fixed_temperature'",
-                      DeprecationWarning)
-        self.fixed_temperature = T
 
     property fixed_temperature:
         """

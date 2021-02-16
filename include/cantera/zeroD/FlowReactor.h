@@ -18,18 +18,13 @@ public:
     FlowReactor();
 
     virtual std::string typeStr() const {
+        warn_deprecated("FlowReactor::typeStr",
+                        "To be removed after Cantera 2.6. Use type() instead.");
         return "FlowReactor";
     }
 
-    /*!
-     * @deprecated To be changed after Cantera 2.5.
-     */
-    virtual int type() const {
-        warn_deprecated("FlowReactor::type",
-                        "To be changed after Cantera 2.5. "
-                        "Return string instead of magic number; use "
-                        "FlowReactor::typeStr during transition");
-        return FlowReactorType;
+    virtual std::string type() const {
+        return "FlowReactor";
     }
 
     virtual void getState(doublereal* y);

@@ -545,7 +545,7 @@ cdef extern from "cantera/zerodim.h" namespace "Cantera":
 
     cdef cppclass CxxReactorBase "Cantera::ReactorBase":
         CxxReactorBase()
-        string typeStr()
+        string type()
         void setThermoMgr(CxxThermoPhase&) except +translate_exception
         void restoreState() except +translate_exception
         void syncState() except +translate_exception
@@ -623,7 +623,7 @@ cdef extern from "cantera/zerodim.h" namespace "Cantera":
 
     cdef cppclass CxxFlowDevice "Cantera::FlowDevice":
         CxxFlowDevice()
-        string typeStr()
+        string type()
         double massFlowRate() except +translate_exception
         double massFlowRate(double) except +translate_exception
         cbool install(CxxReactorBase&, CxxReactorBase&) except +translate_exception
@@ -757,6 +757,7 @@ cdef extern from "cantera/oneD/Boundary1D.h":
         CxxRreactingSurf1D()
         void setKineticsMgr(CxxInterfaceKinetics*) except +translate_exception
         void enableCoverageEquations(cbool) except +translate_exception
+        cbool coverageEnabled()
 
 
 cdef extern from "cantera/oneD/StFlow.h":

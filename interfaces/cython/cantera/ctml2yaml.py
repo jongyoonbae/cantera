@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 # This file is part of Cantera. See License.txt in the top-level directory or
 # at https://cantera.org/license.txt for license and copyright information.
@@ -24,12 +24,27 @@ import copy
 from typing import Any, Dict, Union, Iterable, Optional, List, Tuple
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 try:
     import ruamel_yaml as yaml  # type: ignore
 except ImportError:
     from ruamel import yaml
 
-import numpy as np
+# yaml.version_info is a tuple with the three parts of the version
+yaml_version = yaml.version_info
+# We choose ruamel.yaml 0.15.34 as the minimum version
+# since it is the highest version available in the Ubuntu
+# 18.04 repositories and seems to work. Older versions such as
+# 0.13.14 on CentOS7 and 0.10.23 on Ubuntu 16.04 raise an exception
+# that they are missing the RoundTripRepresenter
+yaml_min_version = (0, 15, 34)
+if yaml_version < yaml_min_version:
+    raise RuntimeError(
+        "The minimum supported version of ruamel.yaml is 0.15.34. If you "
+        "installed ruamel.yaml from your operating system's package manager, "
+        "please install an updated version using pip or conda."
+    )
 
 if TYPE_CHECKING:
     # This is available in the built-in typing module in Python 3.8
@@ -318,11 +333,9 @@ class Phase:
         "IdealSolidSolution": "ideal-condensed",
         "DebyeHuckel": "Debye-Huckel",
         "IdealMolalSolution": "ideal-molal-solution",
-        "IdealGasVPSS": "ideal-gas-VPSS",
         "IdealSolnVPSS": "ideal-solution-VPSS",
         "Margules": "Margules",
         "IonsFromNeutralMolecule": "ions-from-neutral-molecule",
-        "FixedChemPot": "fixed-chemical-potential",
         "Redlich-Kister": "Redlich-Kister",
         "RedlichKwongMFTP": "Redlich-Kwong",
         "MaskellSolidSolnPhase": "Maskell-solid-solution",
@@ -551,8 +564,6 @@ class Phase:
                 self.attribs["tabulated-species"] = node.get("name")
             elif node.tag == "tabulatedThermo":
                 self.attribs["tabulated-thermo"] = self.get_tabulated_thermo(node)
-            elif node.tag == "chemicalPotential":
-                self.attribs["chemical-potential"] = get_float_or_quantity(node)
 
         transport_node = phase.find("transport")
         if transport_node is not None:
@@ -1570,6 +1581,13 @@ class SpeciesThermo:
                 tag = "T0"
             thermo_attribs[tag] = get_float_or_quantity(node)
 
+        tmin = const_cp_node.get('Tmin')
+        if tmin is not None and tmin != '100.0':
+            thermo_attribs['T-min'] = float(tmin)
+        tmax = const_cp_node.get('Tmax')
+        if tmax is not None and tmin != '5000.0':
+            thermo_attribs['T-max'] = float(tmax)
+
         return thermo_attribs
 
     def Mu0(
@@ -1597,6 +1615,12 @@ class SpeciesThermo:
                 "The 'Mu0' node must contain an 'H298' node.", Mu0_node
             )
         thermo_attribs["h0"] = get_float_or_quantity(H298_node)
+        tmin = Mu0_node.get('Tmin')
+        if tmin is not None:
+            thermo_attribs['T-min'] = float(tmin)
+        tmax = Mu0_node.get('Tmax')
+        if tmax is not None:
+            thermo_attribs['T-max'] = float(tmax)
         for float_node in Mu0_node.iterfind("floatArray"):
             title = float_node.get("title")
             if title == "Mu0Values":
@@ -2592,7 +2616,7 @@ def convert(
     metadata = BlockMap(
         {
             "generator": "ctml2yaml",
-            "cantera-version": "2.5.0a4",
+            "cantera-version": "2.6.0a1",
             "date": formatdate(localtime=True),
         }
     )

@@ -219,7 +219,6 @@ vcs_LiSi = CompileAndTest('VCS-LiSi', 'VCSnonideal/LatticeSolid_LiSi', 'latsol',
 Test('VCS-LiSi-verbose', 'VCSnonideal/LatticeSolid_LiSi', vcs_LiSi.program,
      'verbose_blessed.txt', options='8',
      artifacts=['vcs_equilibrate_res.csv'])
-CompileAndTest('VPsilane_test')
 
 CompileAndTest('clib', 'clib_test', 'clib_test',
                extensions=['^clib_test.c'], libs=['cantera_shared'])
@@ -230,6 +229,9 @@ Test('cxx-bvp', 'cxx_samples', '#build/samples/cxx/bvp/blasius', None,
      tolerance=1e-4)
 Test('cxx-combustor', 'cxx_samples', '#build/samples/cxx/combustor/combustor', None,
      comparisons=[('combustor_cxx_blessed.csv', 'combustor_cxx.csv')],
+     threshold=1e-10, tolerance=2e-4)
+Test('cxx-demo', 'cxx_samples', '#build/samples/cxx/demo/demo',
+     'cxx_demo_blessed.txt',
      threshold=1e-10, tolerance=2e-4)
 Test('cxx-flamespeed', 'cxx_samples', '#build/samples/cxx/flamespeed/flamespeed',
      'cxx_flamespeed_blessed.txt',
@@ -245,10 +247,11 @@ Test('cxx-gas-transport', 'cxx_samples',
 Test('cxx-LiC6-electrode', 'cxx_samples',
      '#build/samples/cxx/LiC6_electrode/LiC6_electrode', None,
      comparisons=[('LiC6_electrode_blessed.csv', 'LiC6_electrode_output.csv')])
-Test('cxx-openmp-ignition', 'cxx_samples',
-     '#build/samples/cxx/openmp_ignition/openmp_ignition',
-     'opmenmp_ignition_blessed.txt',
-     ignoreLines=['Running on'])
+if env['HAS_OPENMP']:
+    Test('cxx-openmp-ignition', 'cxx_samples',
+        '#build/samples/cxx/openmp_ignition/openmp_ignition',
+        'opmenmp_ignition_blessed.txt',
+        ignoreLines=['Running on'])
 Test('cxx-rankine', 'cxx_samples', '#build/samples/cxx/rankine/rankine',
      'rankine_blessed.txt')
 

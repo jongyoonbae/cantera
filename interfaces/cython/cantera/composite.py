@@ -447,6 +447,7 @@ class SolutionArray:
         # From Transport
         'viscosity', 'electrical_conductivity', 'thermal_conductivity',
     ]
+    _strings = ['phase_of_matter']
     _n_species = [
         # from ThermoPhase
         'Y', 'X', 'concentrations', 'partial_molar_enthalpies',
@@ -479,7 +480,7 @@ class SolutionArray:
 
     _passthrough = [
         # from ThermoPhase
-        'name', 'ID', 'source', 'basis', 'n_elements', 'element_index',
+        'name', 'source', 'basis', 'n_elements', 'element_index',
         'element_name', 'element_names', 'atomic_weight', 'atomic_weights',
         'n_species', 'species_name', 'species_names', 'species_index',
         'species', 'n_atoms', 'molecular_weights', 'min_temp', 'max_temp',
@@ -501,6 +502,7 @@ class SolutionArray:
     _purefluid_scalar = ['Q']
 
     def __init__(self, phase, shape=(0,), states=None, extra=None, meta=None):
+        self.__dict__['_extra'] = OrderedDict()
         self._phase = phase
 
         if isinstance(shape, int):
@@ -527,7 +529,6 @@ class SolutionArray:
 
         reserved = self.__dir__()
 
-        self._extra = OrderedDict()
         if isinstance(extra, dict):
             for name, v in extra.items():
                 if name in reserved:
@@ -535,25 +536,50 @@ class SolutionArray:
                         "Unable to create extra column '{}': name is already "
                         "used by SolutionArray objects.".format(name))
                 if not np.shape(v):
-                    self._extra[name] = [v]*self._shape[0]
-                elif len(v) == self._shape[0]:
-                    self._extra[name] = list(v)
+                    self._extra[name] = np.full(self._shape, v)
+                elif (self._shape[0] == 1
+                      or np.array(v).shape[:len(self._shape)] == self._shape):
+                    arr = np.array(v)
+                    if arr.dtype == object:
+                        raise ValueError(
+                            "Unable to create extra column '{}': data type "
+                            "'object' is not supported.".format(name))
+                    if self._shape[0] == 1 and len(arr) > 1:
+                        arr = arr[np.newaxis, :]
+                    self._extra[name] = arr
                 else:
-                    raise ValueError("Unable to map extra SolutionArray"
-                                     "input for named {!r}".format(name))
+                    raise ValueError("Unable to map extra SolutionArray "
+                                     "input named {!r}".format(name))
+        elif extra is not None:
+            if self._shape != (0,):
+                raise ValueError("Initial values for extra properties must be "
+                                 "supplied in a dictionary if the SolutionArray "
+                                 "is not initially empty.")
+            if isinstance(extra, np.ndarray):
+                extra = extra.flatten()
+            elif isinstance(extra, str):
+                extra = [extra]
 
-        elif extra and self._shape == (0,):
-            for name in extra:
+            try:
+                iter_extra = iter(extra)
+            except TypeError:
+                raise ValueError(
+                    "Extra properties can be created by passing an iterable "
+                    "of names for the properties. If you want to supply initial "
+                    "values for the properties, use a dictionary whose keys are "
+                    "the names of the properties and values are the initial "
+                    "values.") from None
+
+            for name in iter_extra:
+                if not isinstance(name, str):
+                    raise TypeError(
+                        "Unable to create extra column, passed value '{!r}' "
+                        "is not a string".format(name))
                 if name in reserved:
                     raise ValueError(
                         "Unable to create extra column '{}': name is already "
                         "used by SolutionArray objects.".format(name))
-                self._extra[name] = []
-
-        elif extra:
-            raise ValueError("Initial values for extra properties must be "
-                             "supplied in a dict if the SolutionArray is not "
-                             "initially empty")
+                self._extra[name] = np.empty(shape=(0,))
 
         if meta is None:
             self._meta = {}
@@ -573,10 +599,27 @@ class SolutionArray:
 
     def __getattr__(self, name):
         if name in self._extra:
-            return np.array(self._extra[name])
+            return self._extra[name]
+        elif name in self.__dict__:
+            super().__getattr__(name)
         else:
             raise AttributeError("'{}' object has no attribute '{}'".format(
                 self.__class__.__name__, name))
+
+    def __setattr__(self, name, value):
+        if name in self._extra:
+            new = np.array(value)
+            if not new.shape:
+                # maintain shape of extra entry
+                new = np.full(self._extra[name].shape, value)
+            elif new.shape[:len(self._shape)] != self._shape:
+                raise ValueError(
+                    "Incompatible shapes for extra column '{}': cannot assign "
+                    "value with shape {} to SolutionArray with shape {}"
+                    "".format(name, new.shape, self._shape))
+            super().__setattr__(name, new)
+        else:
+            super().__setattr__(name, value)
 
     def __call__(self, *species):
         return SolutionArray(self._phase[species], states=self._states,
@@ -607,8 +650,24 @@ class SolutionArray:
         if len(self._shape) != 1:
             raise IndexError("Can only append to 1D SolutionArray")
 
-        for name, value in self._extra.items():
-            value.append(kwargs.pop(name))
+        # This check must go before we start appending to any arrays so that
+        # array lengths don't get out of sync.
+        missing_extra_kwargs = self._extra.keys() - kwargs.keys()
+        if missing_extra_kwargs:
+            raise TypeError(
+                "Missing keyword arguments for extra values: "
+                "'{}'".format(", ".join(missing_extra_kwargs))
+            )
+
+        # For the checks of the state below, the kwargs dictionary can
+        # only contain keywords that match properties of the state. Here
+        # we pop any kwargs that have to do with the extra items so they
+        # aren't included in that check. They are put into a temporary
+        # storage so that appending can be done at the end of the function
+        # all at once.
+        extra_temp = {}
+        for name in self._extra:
+            extra_temp[name] = kwargs.pop(name)
 
         if state is not None:
             self._phase.state = state
@@ -616,16 +675,41 @@ class SolutionArray:
         elif len(kwargs) == 1:
             attr, value = next(iter(kwargs.items()))
             if frozenset(attr) not in self._phase._full_states:
-                raise KeyError("{} does not specify a full thermodynamic state")
+                raise KeyError(
+                    "'{}' does not specify a full thermodynamic state".format(attr)
+                )
             setattr(self._phase, attr, value)
 
         else:
             try:
                 attr = self._phase._full_states[frozenset(kwargs)]
             except KeyError:
-                raise KeyError("{} is not a valid combination of properties "
-                    "for setting the thermodynamic state".format(tuple(kwargs)))
+                raise KeyError(
+                    "{} is not a valid combination of properties for setting "
+                    "the thermodynamic state".format(tuple(kwargs))
+                ) from None
             setattr(self._phase, attr, [kwargs[a] for a in attr])
+
+        for name, value in self._extra.items():
+            new = extra_temp[name]
+            if len(value):
+                if (value.ndim == 1 and hasattr(new, '__len__') and
+                    not isinstance(new, str)):
+                    raise ValueError(
+                        "Encountered incompatible value '{}' for extra column '{}'."
+                        "".format(new, name))
+                elif value.ndim > 1 and value.shape[1:] != np.array(new).shape:
+                    raise ValueError(
+                        "Shape of new element does not match existing extra "
+                        "column '{}'".format(name))
+            # Casting to a list before appending is ~5x faster than using
+            # np.append when appending a single item.
+            v = value.tolist()
+            v.append(new)
+            extra_temp[name] = np.array(v)
+
+        for name, value in extra_temp.items():
+            self._extra[name] = value
 
         self._states.append(self._phase.state)
         self._indices.append(len(self._indices))
@@ -654,7 +738,7 @@ class SolutionArray:
             indices = indices[::-1]
         self._states = [self._states[ix] for ix in indices]
         for k, v in self._extra.items():
-            self._extra[k] = list(np.array(v)[indices])
+            self._extra[k] = v[indices]
 
     def equilibrate(self, *args, **kwargs):
         """ See `ThermoPhase.equilibrate` """
@@ -864,7 +948,6 @@ class SolutionArray:
         if tabular and len(self._shape) != 1:
             raise AttributeError("Tabular output of collect_data only works "
                                  "for 1D SolutionArray")
-        out = OrderedDict()
 
         # Create default columns (including complete state information)
         if cols is None:
@@ -888,7 +971,6 @@ class SolutionArray:
 
         def split(c, d):
             """ Split attribute arrays into columns for tabular output """
-            single_species = False
             # Determine labels for the items in the current group of columns
             if c in self._n_species:
                 collabels = ['{}_{}'.format(c, s) for s in self.species_names]
@@ -897,6 +979,10 @@ class SolutionArray:
                              for r in self.reaction_equations()]
             elif c in species_names:
                 collabels = ['{}_{}'.format(species, c)]
+            elif c in self._extra and d.ndim > 1:
+                raise NotImplementedError(
+                    "Detected multi-dimensional extra column '{}': "
+                    "tabular output is not supported.".format(c))
             else:
                 collabels = [c]
 
@@ -955,14 +1041,22 @@ class SolutionArray:
         using `restore_data`. This method allows for recreation of data
         previously exported by `write_csv`.
         """
-        # read data block and header separately
-        data = np.genfromtxt(filename, skip_header=1, delimiter=',')
-        labels = np.genfromtxt(filename, max_rows=1, delimiter=',', dtype=str)
-
-        data_dict = OrderedDict()
-        for i, label in enumerate(labels):
-            data_dict[label] = data[:, i]
-
+        if np.lib.NumpyVersion(np.__version__) < "1.14.0":
+            # bytestring needs to be converted for columns containing strings
+            data = np.genfromtxt(filename, delimiter=',',
+                                 dtype=None, names=True)
+            data_dict = OrderedDict()
+            for label in data.dtype.names:
+                if data[label].dtype.type == np.bytes_:
+                    data_dict[label] = data[label].astype('U')
+                else:
+                    data_dict[label] = data[label]
+        else:
+            # the 'encoding' parameter introduced with NumPy 1.14 simplifies import
+            data = np.genfromtxt(filename, delimiter=',',
+                                 dtype=None, names=True, encoding=None)
+            data_dict = OrderedDict({label: data[label]
+                                     for label in data.dtype.names})
         self.restore_data(data_dict)
 
     def to_pandas(self, cols=None, *args, **kwargs):
@@ -1115,8 +1209,12 @@ class SolutionArray:
             # store SolutionArray data
             for key, val in self._meta.items():
                 dgroup.attrs[key] = val
-            for header, col in data.items():
-                dgroup.create_dataset(header, data=col, **hdf_kwargs)
+            for header, value in data.items():
+                if value.dtype.type == np.str_:
+                    dgroup.create_dataset(header, data=value.astype('S'),
+                                          **hdf_kwargs)
+                else:
+                    dgroup.create_dataset(header, data=value, **hdf_kwargs)
 
         return group
 
@@ -1204,7 +1302,11 @@ class SolutionArray:
             # load data
             data = OrderedDict()
             for name, value in dgroup.items():
-                if name != 'phase':
+                if name == 'phase':
+                    continue
+                elif value.dtype.type == np.bytes_:
+                    data[name] = np.array(value).astype('U')
+                else:
                     data[name] = np.array(value)
 
         self.restore_data(data)
@@ -1280,10 +1382,6 @@ def _make_functions():
         setters = 'TDPUVHS' + ext
         scalar = ext == 'Q'
 
-        # add deprecated setters for PureFluid (e.g. PX/TX)
-        # @todo: remove .. deprecated:: 2.5
-        setters = setters.replace('Q', 'QX')
-
         # obtain setters/getters from thermo objects
         all_states = [k for k in ph.__dict__
                       if not set(k) - set(setters) and len(k)>1]
@@ -1305,6 +1403,12 @@ def _make_functions():
     # different properties
     def empty_scalar(self):
         return np.empty(self._shape)
+
+    def empty_strings(self):
+        # The maximum length of strings assigned by built-in methods is
+        # currently limited to 50 characters; an attempt to assign longer
+        # character arrays will result in truncated strings.
+        return np.empty(self._shape, dtype='U50')
 
     def empty_species(self):
         return np.empty(self._shape + (self._phase.n_selected_species,))
@@ -1331,6 +1435,9 @@ def _make_functions():
 
     for name in SolutionArray._scalar:
         setattr(SolutionArray, name, make_prop(name, empty_scalar, Solution))
+
+    for name in SolutionArray._strings:
+        setattr(SolutionArray, name, make_prop(name, empty_strings, Solution))
 
     for name in SolutionArray._n_species:
         setattr(SolutionArray, name, make_prop(name, empty_species, Solution))

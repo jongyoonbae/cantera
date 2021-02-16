@@ -40,6 +40,19 @@ TEST(AnyValue, getMapWhere_initial_list)
     EXPECT_EQ(m["data"].getMapWhere("a", "baz")["x"].asInt(), 4);
 }
 
+TEST(AnyValue, numeric_yaml_string)
+{
+    AnyMap m = AnyMap::fromYamlString(
+        "data: {a: '12345', b: '123.45', 'c': 12345, 'd': 123.45}");
+
+    EXPECT_THROW(m["data"]["a"].asInt(), CanteraError);
+    EXPECT_EQ(m["data"]["a"].asString(), "12345");
+    EXPECT_THROW(m["data"]["b"].asDouble(), CanteraError);
+    EXPECT_EQ(m["data"]["b"].asString(), "123.45");
+    EXPECT_EQ(m["data"]["c"].asInt(), 12345);
+    EXPECT_EQ(m["data"]["d"].asDouble(), 123.45);
+}
+
 TEST(AnyValue, getMapWhere_initial_map)
 {
     AnyMap m = AnyMap::fromYamlString(
@@ -358,12 +371,4 @@ TEST(AnyMap, missingKeyAt)
     } catch (std::exception& ex) {
         EXPECT_THAT(ex.what(), ::testing::HasSubstr("Key 'spam' not found"));
     }
-}
-
-TEST(AnyMap, loadDeprecatedYaml)
-{
-    // The deprecation warning in this file is turned into an
-    // error by make_deprecation_warnings_fatal() called in main()
-    // for the test suite.
-    EXPECT_THROW(AnyMap::fromYamlFile("argon.yaml"), CanteraError);
 }

@@ -2,8 +2,8 @@
 # at https://cantera.org/license.txt for license and copyright information.
 
 from math import erf
-from os import path
 from email.utils import formatdate
+import warnings
 import numpy as np
 
 from ._cantera import *
@@ -35,13 +35,15 @@ class FlameBase(Sim1D):
         The method returns simulation components that are specific to a class
         derived from `FlameBase` or a specific *domain* within the `FlameBase`
         simulation object. Entries may include:
-         * ``grid``: grid point positions along the flame [m]
-         * ``velocity``: normal velocity [m/s]
-         * ``spread_rate``: tangential velocity gradient [1/s]
-         * ``lambda``: radial pressure gradient [N/m^4]
-         * ``eField``: electric field strength
 
-        :param domain: Index of a specific domain within the `Sim1D.domains`
+        * ``grid``: grid point positions along the flame [m]
+        * ``velocity``: normal velocity [m/s]
+        * ``spread_rate``: tangential velocity gradient [1/s]
+        * ``lambda``: radial pressure gradient [N/m^4]
+        * ``eField``: electric field strength
+
+        :param domain:
+            Index of a specific domain within the `Sim1D.domains`
             list. The default is to return other columns of the `Sim1D` object.
         """
         if domain is None:
@@ -51,7 +53,7 @@ class FlameBase(Sim1D):
         if isinstance(dom, Inlet1D):
             return tuple([e for e in self._other
                           if e not in {'grid', 'lambda', 'eField'}])
-        elif isinstance(dom, IdealGasFlow):
+        elif isinstance(dom, (IdealGasFlow, IonFlow)):
             return self._other
         else:
             return ()
@@ -252,8 +254,16 @@ class FlameBase(Sim1D):
     def radiation_enabled(self, enable):
         self.flame.radiation_enabled = enable
 
-    def set_boundary_emissivities(self, e_left, e_right):
-        self.flame.set_boundary_emissivities(e_left, e_right)
+    @property
+    def boundary_emissivities(self):
+        """ Set/get boundary emissivities. """
+        return self.flame.boundary_emissivities
+
+    @boundary_emissivities.setter
+    def boundary_emissivities(self, epsilon):
+        if len(epsilon) != 2:
+            raise ValueError("Boundary emissivities must both be set at the same time.")
+        self.flame.boundary_emissivities = epsilon[0], epsilon[1]
 
     @property
     def grid(self):
@@ -275,41 +285,11 @@ class FlameBase(Sim1D):
         return self.profile(self.flame, 'T')
 
     @property
-    def u(self):
-        """
-        Array containing the velocity [m/s] normal to the flame at each point.
-
-        .. deprecated:: 2.5
-
-             To be deprecated with version 2.5, and removed thereafter.
-             Replaced by property `velocity`.
-        """
-        warnings.warn("Property 'u' to be removed after Cantera 2.5. "
-                      "Replaced by property 'velocity'",
-                      DeprecationWarning)
-        return self.profile(self.flame, 'velocity')
-
-    @property
     def velocity(self):
         """
         Array containing the velocity [m/s] normal to the flame at each point.
         """
         return self.profile(self.flame, 'velocity')
-
-    @property
-    def V(self):
-        """
-        Array containing the tangential velocity gradient [1/s] at each point.
-
-        .. deprecated:: 2.5
-
-             To be deprecated with version 2.5, and removed thereafter.
-             Replaced by property `spread_rate`.
-        """
-        warnings.warn("Property 'V' to be removed after Cantera 2.5. "
-                      "Replaced by property 'spread_rate'",
-                      DeprecationWarning)
-        return self.profile(self.flame, 'spread_rate')
 
     @property
     def spread_rate(self):

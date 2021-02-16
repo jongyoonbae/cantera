@@ -428,6 +428,12 @@ class converterTestCommon:
         self.assertEqual(gas.n_reactions, 0)
         self.assertEqual(surf.n_reactions, 15)
 
+        # Coverage dependencies
+        covdeps = surf.reaction(1).coverage_deps
+        self.assertIn('H_Pt', covdeps)
+        self.assertEqual(covdeps['OH_Pt'][1], 1.0)
+        self.assertNear(covdeps['H_Pt'][2], -6e6)
+
     def test_third_body_plus_falloff_reactions(self):
         self.convert('third_body_plus_falloff_reaction.inp')
         gas = ct.Solution('third_body_plus_falloff_reaction' + self.ext)
@@ -477,7 +483,18 @@ class ck2yamlTest(converterTestCommon, utilities.CanteraTest):
         self.assertEqual(desc, 'This is an alternative description.')
         for key in ['foo', 'bar']:
             self.assertIn(key, yml.keys())
-
+        # This test tests it can convert the SRI parameters when D or E equal to 0
+   
+    def test_sri_zero(self):
+        self.convert('sri_convert_test.txt')
+        output = pjoin(self.test_work_dir, 'sri_convert_test' + self.ext)
+        with open(output, 'r') as f:
+            mech = yaml.safe_load(f)
+        D = mech['reactions'][0]['SRI']['D']
+        E = mech['reactions'][0]['SRI']['E']
+        self.assertEqual(D, 0)
+        self.assertEqual(E, 0)
+        
     def test_duplicate_reactions(self):
         # Running a test this way instead of using the convertMech function
         # tests the behavior of the ck2yaml.main function and the mechanism
@@ -508,6 +525,9 @@ class ck2yamlTest(converterTestCommon, utilities.CanteraTest):
         for token in ('FAILED', 'lines 12 and 14', 'R1A', 'R1B'):
             self.assertIn(token, message)
 
+    def test_error_for_big_element_number(self):
+        with self.assertRaisesRegex(self.InputError, 'Element amounts can have no more than 3 digits.'):
+            self.convert('big_element_num_err.inp')
 
 class CtmlConverterTest(utilities.CanteraTest):
     def test_sofc(self):
@@ -827,10 +847,10 @@ class ctml2yamlTest(utilities.CanteraTest):
 
         return ctmlPhase, yamlPhase
 
-    def checkThermo(self, ctmlPhase, yamlPhase, temperatures, tol=1e-7):
+    def checkThermo(self, ctmlPhase, yamlPhase, temperatures, pressure=ct.one_atm, tol=1e-7):
         for T in temperatures:
-            ctmlPhase.TP = T, ct.one_atm
-            yamlPhase.TP = T, ct.one_atm
+            ctmlPhase.TP = T, pressure
+            yamlPhase.TP = T, pressure
             cp_ctml = ctmlPhase.partial_molar_cp
             cp_yaml = yamlPhase.partial_molar_cp
             h_ctml = ctmlPhase.partial_molar_enthalpies
@@ -1103,24 +1123,13 @@ class ctml2yamlTest(utilities.CanteraTest):
         self.checkThermo(ctmlGas, yamlGas, [300, 500, 1300, 2000])
         self.checkKinetics(ctmlGas, yamlGas, [900, 1800], [2e5, 20e5])
 
-    # @todo Remove after Cantera 2.5 - class FixedChemPotSSTP is deprecated
-    def test_fixed_chemical_potential_thermo(self):
-        ct.suppress_deprecation_warnings()
-        ctml2yaml.convert(
-            Path(self.test_data_dir).joinpath("LiFixed.xml"),
-            Path(self.test_work_dir).joinpath("LiFixed.yaml"),
-        )
-        ctmlGas, yamlGas = self.checkConversion("LiFixed")
-        self.checkThermo(ctmlGas, yamlGas, [300, 500, 1300, 2000])
-        ct.make_deprecation_warnings_fatal()
-
     def test_water_IAPWS95_thermo(self):
         ctml2yaml.convert(
             Path(self.test_data_dir).joinpath("liquid-water.xml"),
             Path(self.test_work_dir).joinpath("liquid-water.yaml"),
         )
         ctmlWater, yamlWater = self.checkConversion("liquid-water")
-        self.checkThermo(ctmlWater, yamlWater, [300, 500, 1300, 2000])
+        self.checkThermo(ctmlWater, yamlWater, [300, 500, 1300, 2000], pressure=22064000.0)
         self.assertEqual(ctmlWater.transport_model, yamlWater.transport_model)
         dens = ctmlWater.density
         for T in [298, 1001, 2400]:
@@ -1239,22 +1248,17 @@ class ctml2yamlTest(utilities.CanteraTest):
             Path(self.test_data_dir).joinpath("pdss_hkft.xml"),
             Path(self.test_work_dir).joinpath("pdss_hkft.yaml"),
         )
-        # @todo Remove "gas" mode test after Cantera 2.5 - "gas" mode of class
-        #     IdealSolnGasVPSS is deprecated
-        ct.suppress_deprecation_warnings()
-        for name in ["vpss_gas_pdss_hkft_phase", "vpss_soln_pdss_hkft_phase"]:
-            ctmlPhase = ct.ThermoPhase("pdss_hkft.xml", name=name)
-            yamlPhase = ct.ThermoPhase("pdss_hkft.yaml", name=name)
-            # Due to changes in how the species elements are specified, the
-            # composition of the species differs from XML to YAML (electrons are used
-            # to specify charge in YAML while the charge node is used in XML).
-            # Therefore, checkConversion won't work and we have to check a few things
-            # manually. There are also no reactions specified for these phases so don't
-            # need to do any checks for that.
-            self.assertEqual(ctmlPhase.element_names, yamlPhase.element_names)
-            self.assertEqual(ctmlPhase.species_names, yamlPhase.species_names)
-            self.checkThermo(ctmlPhase, yamlPhase, [300, 500])
-        ct.make_deprecation_warnings_fatal()
+        ctmlPhase = ct.ThermoPhase("pdss_hkft.xml")
+        yamlPhase = ct.ThermoPhase("pdss_hkft.yaml")
+        # Due to changes in how the species elements are specified, the
+        # composition of the species differs from XML to YAML (electrons are used
+        # to specify charge in YAML while the charge node is used in XML).
+        # Therefore, checkConversion won't work and we have to check a few things
+        # manually. There are also no reactions specified for these phases so don't
+        # need to do any checks for that.
+        self.assertEqual(ctmlPhase.element_names, yamlPhase.element_names)
+        self.assertEqual(ctmlPhase.species_names, yamlPhase.species_names)
+        self.checkThermo(ctmlPhase, yamlPhase, [300, 500])
 
     def test_lattice_solid(self):
         ctml2yaml.convert(

@@ -150,17 +150,6 @@ class TestReactor(utilities.CanteraTest):
         dt_max = 0.07
         t = tStart
 
-        with warnings.catch_warnings(record=True) as w:
-
-            # cause all warnings to always be triggered.
-            warnings.simplefilter("always")
-            self.net.set_max_time_step(dt_max)
-
-            self.assertEqual(len(w), 1)
-            self.assertTrue(issubclass(w[-1].category, DeprecationWarning))
-            self.assertIn("To be removed after Cantera 2.5. ",
-                          str(w[-1].message))
-
         self.net.max_time_step = dt_max
         self.assertEqual(self.net.max_time_step, dt_max)
         self.net.set_initial_time(tStart)
@@ -291,10 +280,10 @@ class TestReactor(utilities.CanteraTest):
         n_advance_negative = integrate(-1.0)
         n_advance_override = integrate(.001, False)
 
-        self.assertTrue(n_advance_coarse > n_baseline)
-        self.assertTrue(n_advance_fine > n_advance_coarse)
-        self.assertTrue(n_advance_negative == n_baseline)
-        self.assertTrue(n_advance_override == n_baseline)
+        self.assertGreater(n_advance_coarse, n_baseline)
+        self.assertGreater(n_advance_fine, n_advance_coarse)
+        self.assertEqual(n_advance_negative, n_baseline)
+        self.assertEqual(n_advance_override, n_baseline)
 
     def test_heat_transfer1(self):
         # Connected reactors reach thermal equilibrium after some time
@@ -616,35 +605,6 @@ class TestReactor(utilities.CanteraTest):
         self.net.advance(0.02)
         self.assertNear(valve.mass_flow_rate, mdot())
 
-    def test_valve_deprecations(self):
-        # Make sure Python deprecation warnings actually get displayed
-
-        self.make_reactors()
-        valve = ct.Valve(self.r1, self.r2)
-        k = 2e-5
-
-        with warnings.catch_warnings(record=True) as w:
-
-            # cause all warnings to always be triggered.
-            warnings.simplefilter("always")
-            valve.set_valve_coeff(k)
-
-            self.assertTrue(len(w) == 1)
-            self.assertTrue(issubclass(w[-1].category, DeprecationWarning))
-            self.assertTrue("To be removed after Cantera 2.5. "
-                            in str(w[-1].message))
-
-        with warnings.catch_warnings(record=True) as w:
-
-            # cause all warnings to always be triggered.
-            warnings.simplefilter("always")
-            valve.set_valve_function(lambda t: t>.01)
-
-            self.assertTrue(len(w) == 1)
-            self.assertTrue(issubclass(w[-1].category, DeprecationWarning))
-            self.assertTrue("To be removed after Cantera 2.5. "
-                            in str(w[-1].message))
-
     def test_valve_errors(self):
         self.make_reactors()
         res = ct.Reservoir()
@@ -708,26 +668,6 @@ class TestReactor(utilities.CanteraTest):
             self.assertNear(mdot(t), mfc.mass_flow_rate)
             dP = self.r1.thermo.P - outlet_reservoir.thermo.P
             self.assertNear(mdot(t) + pfunc(dP), pc.mass_flow_rate)
-
-    def test_pressure_controller_deprecations(self):
-        # Make sure Python deprecation warnings actually get displayed
-
-        self.make_reactors()
-        res = ct.Reservoir(self.gas1)
-        mfc = ct.MassFlowController(res, self.r1, mdot=0.6)
-
-        p = ct.PressureController(self.r1, self.r2, master=mfc, K=0.5)
-
-        with warnings.catch_warnings(record=True) as w:
-
-            # cause all warnings to always be triggered.
-            warnings.simplefilter("always")
-            p.set_pressure_coeff(2.)
-
-            self.assertTrue(len(w) == 1)
-            self.assertTrue(issubclass(w[-1].category, DeprecationWarning))
-            self.assertTrue("To be removed after Cantera 2.5. "
-                            in str(w[-1].message))
 
     def test_pressure_controller_errors(self):
         self.make_reactors()
@@ -1451,7 +1391,7 @@ class TestReactorSensitivities(utilities.CanteraTest):
         gas.set_equivalence_ratio(0.4, 'H2', 'O2:1.0, AR:4.0')
         r = ct.IdealGasReactor(gas)
         net = ct.ReactorNet([r])
-        net.rtol_sensitivity = 1e-5
+        net.rtol_sensitivity = 2e-5
         return gas, r, net
 
     def calc_tig(self, species, dH):

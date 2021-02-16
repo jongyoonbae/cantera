@@ -181,22 +181,6 @@ class TestFreeFlame(utilities.CanteraTest):
         self.assertNear(self.sim.fixed_temperature, tfixed)
         self.assertNear(self.sim.fixed_temperature_location, zfixed)
 
-    def test_deprecated(self):
-        Tin = 300
-        p = ct.one_atm
-        reactants = 'H2:0.65, O2:0.5, AR:2'
-        self.create_sim(p, Tin, reactants, width=0.0001)
-        with self.assertWarnsRegex(DeprecationWarning, "Replaced by property"):
-            self.sim.flame.set_boundary_emissivities(0.5, 0.5)
-        with self.assertWarnsRegex(DeprecationWarning, "property 'velocity"):
-            self.sim.u
-        with self.assertWarnsRegex(DeprecationWarning, "property 'spread"):
-            self.sim.V
-        with self.assertRaisesRegex(ct.CanteraError, "renamed to 'velocity"):
-            self.sim.flame.component_index('u')
-        with self.assertRaisesRegex(ct.CanteraError, "renamed to 'spread_rate"):
-            self.sim.flame.component_index('V')
-
     def test_auto_width(self):
         Tin = 300
         p = ct.one_atm
@@ -272,6 +256,18 @@ class TestFreeFlame(utilities.CanteraTest):
         # Check continuity
         for rhou_j in self.sim.density * self.sim.velocity:
             self.assertNear(rhou_j, rhou, 1e-4)
+
+    def test_collect_restore(self):
+        self.run_mix(phi=1.0, T=300, width=2.0, p=1.0, refine=False)
+
+        states, other, meta = self.sim.collect_data('flame', ['grid'])
+        self.assertArrayNear(self.sim.grid, other['grid'])
+        self.assertArrayNear(self.sim.T, states[0])
+
+        f2 = ct.FreeFlame(self.gas)
+        f2.restore_data('flame', states, other, meta)
+        self.assertArrayNear(self.sim.grid, f2.grid)
+        self.assertArrayNear(self.sim.T, f2.T)
 
     def test_solution_array_output(self):
         self.run_mix(phi=1.0, T=300, width=2.0, p=1.0, refine=False)
@@ -1239,15 +1235,12 @@ class TestIonBurnerFlame(utilities.CanteraTest):
         self.gas = ct.Solution('ch4_ion.cti')
         self.gas.TPX = Tburner, p, reactants
         self.sim = ct.IonBurnerFlame(self.gas, width=width)
-        self.sim.set_refine_criteria(ratio=4, slope=0.4, curve=0.6)
+        self.sim.set_refine_criteria(ratio=4, slope=0.1, curve=0.1)
         self.sim.burner.mdot = self.gas.density * 0.15
         self.sim.transport_model = 'Ion'
 
-        # stage one
-        self.sim.solve(loglevel=0, auto=True)
-
-        #stage two
-        self.sim.solve(loglevel=0, stage=2, enable_energy=True)
+        self.sim.solve(loglevel=0, stage=2, auto=True)
 
         # Regression test
-        self.assertNear(max(self.sim.E), 552.33, 1e-2)
+        self.assertNear(max(self.sim.E), 591.76, 1e-2)
+        self.assertNear(max(self.sim.X[self.gas.species_index('E')]), 8.024e-9, 1e-2)

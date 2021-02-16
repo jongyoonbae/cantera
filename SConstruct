@@ -9,9 +9,9 @@ Basic usage:
 
     'scons clean' - Delete files created while building Cantera.
 
-    '[sudo] scons install' - Install Cantera.
+    'scons install' - Install Cantera.
 
-    '[sudo] scons uninstall' - Uninstall Cantera.
+    'scons uninstall' - Uninstall Cantera.
 
     'scons test' - Run all tests which did not previously pass or for which the
                    results may have changed.
@@ -258,6 +258,7 @@ defaults.debugLinkFlags = ''
 defaults.noDebugLinkFlags = ''
 defaults.warningFlags = '-Wall'
 defaults.buildPch = False
+defaults.sphinx_options = '-W --keep-going'
 env['pch_flags'] = []
 env['openmp_flag'] = ['-fopenmp'] # used to generate sample build scripts
 
@@ -265,7 +266,7 @@ env['using_apple_clang'] = False
 # Check if this is actually Apple's clang on macOS
 if env['OS'] == 'Darwin':
     result = subprocess.check_output([env.subst('$CC'), '--version']).decode('utf-8')
-    if 'clang' in result.lower() and 'Xcode' in result:
+    if 'clang' in result.lower() and ('Xcode' in result or 'Apple' in result):
         env['using_apple_clang'] = True
         env['openmp_flag'].insert(0, '-Xpreprocessor')
 
@@ -315,7 +316,7 @@ else:
 # InstallVersionedLib only fully functional in SCons >= 2.4.0
 # SHLIBVERSION fails with MinGW: http://scons.tigris.org/issues/show_bug.cgi?id=3035
 if (env['toolchain'] == 'mingw'
-    or StrictVersion(SCons.__version__) < StrictVersion('2.4.0')):
+    or parse_version(SCons.__version__) < parse_version('2.4.0')):
     defaults.versionedSharedLibrary = False
 else:
     defaults.versionedSharedLibrary = True
@@ -342,16 +343,16 @@ config_options = [
     PathVariable(
         'libdirname',
         """Set this to the directory where Cantera libraries should be installed.
-           Some distributions (e.g. Fedora/RHEL) use 'lib64' instead of 'lib' on 64-bit systems
+           Some distributions (for example, Fedora/RHEL) use 'lib64' instead of 'lib' on 64-bit systems
            or could use some other library directory name instead of 'lib' depends
-           on architecture and profile (e.g. Gentoo 'libx32' on x32 profile).
+           on architecture and profile (for example, Gentoo 'libx32' on x32 profile).
            If user didn't set 'libdirname' configuration variable set it to default value 'lib'""",
         'lib', PathVariable.PathAccept),
     EnumVariable(
         'python_package',
         """If you plan to work in Python, then you need the ``full`` Cantera Python
            package. If, on the other hand, you will only use Cantera from some
-           other language (e.g. MATLAB or Fortran 90/95) and only need Python
+           other language (for example, MATLAB or Fortran 90/95) and only need Python
            to process CTI files, then you only need a ``minimal`` subset of the
            package and Cython and NumPy are not necessary. The ``none`` option
            doesn't install any components of the Python interface. The default
@@ -359,7 +360,7 @@ config_options = [
            Python is running SCons if the required prerequisites (NumPy and
            Cython) are installed. Note: ``y`` is a synonym for ``full`` and ``n``
            is a synonym for ``none``.""",
-        'default', ('new', 'full', 'minimal', 'none', 'n', 'y', 'default')),
+        'default', ('full', 'minimal', 'none', 'n', 'y', 'default')),
     PathVariable(
         'python_cmd',
         """Cantera needs to know where to find the Python interpreter. If
@@ -375,21 +376,6 @@ config_options = [
            will be installed to the system default 'site-packages' directory.
            To install to the current user's 'site-packages' directory, use
            'python_prefix=USER'.""",
-        defaults.python_prefix, PathVariable.PathAccept),
-    EnumVariable(
-        'python3_package',
-        """Deprecated synonym for the 'python_package' option. Will be overridden
-        if 'python_package' is set.""",
-        'default', ('full', 'minimal', 'y', 'n', 'none', 'default')),
-    PathVariable(
-        'python3_cmd',
-        """Deprecated synonym for the 'python_cmd' option. Will be overridden
-           if 'python_cmd' is set.""",
-        sys.executable, PathVariable.PathAccept),
-    PathVariable(
-        'python3_prefix',
-        """Deprecated synonym for the 'python_prefix' option. Will be overridden
-           if 'python_prefix' is set.""",
         defaults.python_prefix, PathVariable.PathAccept),
      EnumVariable(
         'matlab_toolbox',
@@ -439,11 +425,17 @@ config_options = [
         'sphinx_cmd',
         """Command to use for building the Sphinx documentation.""",
         'sphinx-build', PathVariable.PathAccept),
+    (
+        "sphinx_options",
+        """Options passed to the 'sphinx_cmd' command line. Separate multiple
+           options with spaces, for example, "-W --keep-going".""",
+        defaults.sphinx_options,
+    ),
     EnumVariable(
         'system_eigen',
         """Select whether to use Eigen from a system installation ('y'), from a
            Git submodule ('n'), or to decide automatically ('default'). If Eigen
-           is not installed directly into a system include directory, e.g. it is
+           is not installed directly into a system include directory, for example, it is
            installed in '/opt/include/eigen3/Eigen', then you will need to add
            '/opt/include/eigen3' to 'extra_inc_dirs'.
            """,
@@ -474,35 +466,35 @@ config_options = [
         """The directory where the SUNDIALS header files are installed. This
            should be the directory that contains the "cvodes", "nvector", etc.
            subdirectories. Not needed if the headers are installed in a
-           standard location, e.g., '/usr/include'.""",
+           standard location, for example, '/usr/include'.""",
         '', PathVariable.PathAccept),
     PathVariable(
         'sundials_libdir',
         """The directory where the SUNDIALS static libraries are installed.
            Not needed if the libraries are installed in a standard location,
-           e.g., '/usr/lib'.""",
+           for example, '/usr/lib'.""",
         '', PathVariable.PathAccept),
     (
         'blas_lapack_libs',
         """Cantera can use BLAS and LAPACK libraries available on your system if
-           you have optimized versions available (e.g., Intel MKL). Otherwise,
+           you have optimized versions available (for example, Intel MKL). Otherwise,
            Cantera will use Eigen for linear algebra support. To use BLAS
            and LAPACK, set 'blas_lapack_libs' to the the list of libraries
-           that should be passed to the linker, separated by commas, e.g.,
+           that should be passed to the linker, separated by commas, for example,
            "lapack,blas" or "lapack,f77blas,cblas,atlas". Eigen is required
            whether or not BLAS/LAPACK are used.""",
         ''),
     PathVariable(
         'blas_lapack_dir',
         """Directory containing the libraries specified by 'blas_lapack_libs'. Not
-           needed if the libraries are installed in a standard location, e.g.
+           needed if the libraries are installed in a standard location, for example,
            ``/usr/lib``.""",
         '', PathVariable.PathAccept),
     EnumVariable(
         'lapack_names',
         """Set depending on whether the procedure names in the specified
            libraries are lowercase or uppercase. If you don't know, run 'nm' on
-           the library file (e.g., 'nm libblas.a').""",
+           the library file (for example, 'nm libblas.a').""",
         'lower', ('lower','upper')),
     BoolVariable(
         'lapack_ftn_trailing_underscore',
@@ -516,24 +508,16 @@ config_options = [
            each argument ('no') in the Fortran libraries.""",
         True),
     EnumVariable(
-        'system_googletest',
-        """Select whether to use gtest/gmock from system
-           installation ('y'), from a Git submodule ('n'), or to decide
-           automatically ('default'). Deprecated option, please use 'googletest' instead.
-           This option is suppressed by 'googletest' option.""",
-        'unspecified', ('unspecified','default', 'y', 'n')),
-    EnumVariable(
         'googletest',
         """Select whether to use gtest/gmock from system
            installation ('system'), from a Git submodule ('submodule'), to decide
            automatically ('default') or don't look for gtest/gmock ('none')
-           and don't run tests that depend on gtest/gmock. If this option is
-           set then it suppresses the deprecated 'system_googletest' option.""",
+           and don't run tests that depend on gtest/gmock.""",
         'default', ('default', 'system', 'submodule', 'none')),
     (
         'env_vars',
         """Environment variables to propagate through to SCons. Either the
-           string "all" or a comma separated list of variable names, e.g.
+           string "all" or a comma separated list of variable names, for example,
            'LD_LIBRARY_PATH,HOME'.""",
         defaults.env_vars),
     BoolVariable(
@@ -543,7 +527,7 @@ config_options = [
     (
         'cxx_flags',
         """Compiler flags passed to the C++ compiler only. Separate multiple
-           options with spaces, e.g., "cxx_flags='-g -Wextra -O3 --std=c++11'"
+           options with spaces, for example, "cxx_flags='-g -Wextra -O3 --std=c++11'"
            """,
         defaults.cxxFlags),
     (
@@ -592,7 +576,7 @@ config_options = [
         'warning_flags',
         """Additional compiler flags passed to the C/C++ compiler to enable
            extra warnings. Used only when compiling source code that is part
-           of Cantera (e.g. excluding code in the 'ext' directory).""",
+           of Cantera (for example, excluding code in the 'ext' directory).""",
         defaults.warningFlags),
     (
         'extra_inc_dirs',
@@ -607,12 +591,12 @@ config_options = [
     PathVariable(
         'boost_inc_dir',
         """Location of the Boost header files. Not needed if the headers are
-           installed in a standard location, e.g. '/usr/include'.""",
+           installed in a standard location, for example, '/usr/include'.""",
         defaults.boostIncDir, PathVariable.PathAccept),
     PathVariable(
         'stage_dir',
         """Directory relative to the Cantera source directory to be
-           used as a staging area for building e.g. a Debian
+           used as a staging area for building for example, a Debian
            package. If specified, 'scons install' will install files
            to 'stage_dir/prefix/...'.""",
         '',
@@ -623,7 +607,7 @@ config_options = [
         False),
     (
         'gtest_flags',
-        """Additional options passed to each GTest test suite, e.g.
+        """Additional options passed to each GTest test suite, for example,
            '--gtest_filter=*pattern*'. Separate multiple options with spaces.""",
         ''),
     BoolVariable(
@@ -638,7 +622,7 @@ config_options = [
     BoolVariable(
         'versioned_shared_library',
         """If enabled, create a versioned shared library, with symlinks to the
-           more generic library name, e.g. 'libcantera_shared.so.2.5.0' as the
+           more generic library name, for example, 'libcantera_shared.so.2.5.0' as the
            actual library and 'libcantera_shared.so' and 'libcantera_shared.so.2'
            as symlinks.
            """,
@@ -651,7 +635,7 @@ config_options = [
     EnumVariable(
         'layout',
         """The layout of the directory structure. 'standard' installs files to
-           several subdirectories under 'prefix', e.g. 'prefix/bin',
+           several subdirectories under 'prefix', for example, 'prefix/bin',
            'prefix/include/cantera', 'prefix/lib' etc. This layout is best used in
            conjunction with "prefix'='/usr/local'". 'compact' puts all installed
            files in the subdirectory defined by 'prefix'. This layout is best
@@ -719,12 +703,10 @@ for arg in ARGUMENTS:
         print('Encountered unexpected command line argument: %r' % arg)
         sys.exit(1)
 
-# Require a StrictVersion-compatible version
-env['cantera_version'] = "2.5.0a4"
-ctversion = StrictVersion(env['cantera_version'])
+env['cantera_version'] = "2.6.0a1"
 # For use where pre-release tags are not permitted (MSI, sonames)
-env['cantera_pure_version'] = '.'.join(str(x) for x in ctversion.version)
-env['cantera_short_version'] = '.'.join(str(x) for x in ctversion.version[:2])
+env['cantera_pure_version'] = re.match(r'(\d+\.\d+\.\d+)', env['cantera_version']).group(0)
+env['cantera_short_version'] = re.match(r'(\d+\.\d+)', env['cantera_version']).group(0)
 
 try:
     env['git_commit'] = getCommandOutput('git', 'rev-parse', '--short', 'HEAD')
@@ -938,17 +920,6 @@ except ValueError:
     env['FMT_VERSION'] = '0.0.0'
     print('INFO: Could not find version of fmt')
 
-# Convert setting of the deprecated system_googletest option
-if env['system_googletest'] != 'unspecified':
-    print("WARNING: The 'system_googletest' option is deprecated. "
-        "Use the 'googletest' option instead.")
-if env['system_googletest'] == 'default':
-    env['googletest'] = 'default'
-elif env['system_googletest'] == 'y':
-    env['googletest'] = 'system'
-elif env['system_googletest'] == 'n':
-    env['googletest'] = 'submodule'
-
 # Check for yaml-cpp library and checkout submodule if needed
 if env['system_yamlcpp'] in ('y', 'default'):
     if conf.CheckCXXHeader('yaml-cpp/yaml.h', '""'):
@@ -1052,6 +1023,7 @@ else:
     env['cxx_stdlib'] = []
 
 env['HAS_CLANG'] = conf.CheckDeclaration('__clang__', '', 'C++')
+env['HAS_OPENMP'] = conf.CheckCXXHeader('omp.h', '""')
 
 boost_version_source = get_expression_value(['<boost/version.hpp>'], 'BOOST_LIB_VERSION')
 retcode, boost_lib_version = conf.TryRun(boost_version_source, '.cpp')
@@ -1125,17 +1097,17 @@ if env['system_sundials'] == 'y':
 
     # Ignore the minor version, e.g. 2.4.x -> 2.4
     env['sundials_version'] = '.'.join(sundials_version.split('.')[:2])
-    sundials_ver = LooseVersion(env['sundials_version'])
-    if sundials_ver < LooseVersion('2.4') or sundials_ver >= LooseVersion('6.0'):
+    sundials_ver = parse_version(env['sundials_version'])
+    if sundials_ver < parse_version('2.4') or sundials_ver >= parse_version('6.0'):
         print("""ERROR: Sundials version %r is not supported.""" % env['sundials_version'])
         sys.exit(1)
-    elif sundials_ver > LooseVersion('5.3'):
+    elif sundials_ver > parse_version('5.7'):
         print("WARNING: Sundials version %r has not been tested." % env['sundials_version'])
 
     print("""INFO: Using system installation of Sundials version %s.""" % sundials_version)
 
     #Determine whether or not Sundials was built with BLAS/LAPACK
-    if sundials_ver < LooseVersion('2.6'):
+    if sundials_ver < parse_version('2.6'):
         # In Sundials 2.4 / 2.5, SUNDIALS_BLAS_LAPACK is either 0 or 1
         sundials_blas_lapack = get_expression_value(['"sundials/sundials_config.h"'],
                                                        'SUNDIALS_BLAS_LAPACK')
@@ -1228,31 +1200,29 @@ if env['VERBOSE']:
 env['python_cmd_esc'] = quoted(env['python_cmd'])
 
 # Python Package Settings
-python_min_version = LooseVersion('3.5')
+python_min_version = parse_version('3.5')
+# The string is used to set python_requires in setup.py.in
+env['py_min_ver_str'] = str(python_min_version)
 # Note: cython_min_version is redefined below if the Python version is 3.8 or higher
-cython_min_version = LooseVersion('0.23')
-numpy_min_test_version = LooseVersion('1.8.1')
+cython_min_version = parse_version('0.23')
+numpy_min_version = parse_version('1.12.0')
 
-# Handle the version-specific Python package options
-python_options = (('package', 'default'),
-                  ('cmd', sys.executable),
-                  ('prefix', defaults.python_prefix))
-for option, default in python_options:
-    if env['python3_' + option] != default:
-        print("WARNING: Option 'python3_{0}' is deprecated."
-            " Use 'python_{0}' instead.".format(option))
-        if env['python_' + option] == default:
-            env['python_' + option] = env['python3_' + option]
-        else:
-            print("WARNING: Ignoring option 'python3_{0}'"
-                " because 'python_{0}' was also set.".format(option))
+# We choose ruamel.yaml 0.15.34 as the minimum version
+# since it is the highest version available in the Ubuntu
+# 18.04 repositories and seems to work. Older versions such as
+# 0.13.14 on CentOS7 and 0.10.23 on Ubuntu 16.04 raise an exception
+# that they are missing the RoundTripRepresenter
+ruamel_min_version = parse_version('0.15.34')
 
-if env['python_package'] == 'new':
-    print("WARNING: The 'new' option for the Python package is "
-          "deprecated and will be removed in the future. Use "
-          "'full' instead.")
-    env['python_package'] = 'full'  # Allow 'new' as a synonym for 'full'
-elif env['python_package'] == 'y':
+# Check for the minimum ruamel.yaml version, 0.15.34, at install and test
+# time. The check happens at install and test time because ruamel.yaml is
+# only required to run the Python interface, not to build it.
+check_for_ruamel_yaml = any(
+    target in COMMAND_LINE_TARGETS
+    for target in ["install", "test", "test-python-convert"]
+)
+
+if env['python_package'] == 'y':
     env['python_package'] = 'full'  # Allow 'y' as a synonym for 'full'
 elif env['python_package'] == 'n':
   env['python_package'] = 'none'  # Allow 'n' as a synonym for 'none'
@@ -1281,6 +1251,25 @@ if env['python_package'] != 'none':
         if err:
             print(err)
     """)
+    expected_output_lines = 3
+    if check_for_ruamel_yaml:
+        ru_script = textwrap.dedent("""\
+            try:
+                import ruamel_yaml as yaml
+                print(yaml.__version__)
+            except ImportError as ru_err:
+                try:
+                    from ruamel import yaml
+                    print(yaml.__version__)
+                except ImportError as ru_err_2:
+                    print('0.0.0')
+                    err += str(ru_err) + '\\n'
+                    err += str(ru_err_2) + '\\n'
+        """).splitlines()
+        s = script.splitlines()
+        s[-2:-2] = ru_script
+        script = "\n".join(s)
+        expected_output_lines = 4
 
     try:
         info = getCommandOutput(env['python_cmd'], '-c', script).splitlines()
@@ -1296,9 +1285,20 @@ if env['python_package'] != 'none':
         warn_no_python = True
     else:
         warn_no_python = False
-        python_version = LooseVersion(info[0])
-        numpy_version = LooseVersion(info[1])
-        cython_version = LooseVersion(info[2])
+        python_version = parse_version(info[0])
+        numpy_version = parse_version(info[1])
+        cython_version = parse_version(info[2])
+        if check_for_ruamel_yaml:
+            ruamel_yaml_version = parse_version(info[3])
+            if ruamel_yaml_version == parse_version("0.0.0"):
+                print("ERROR: ruamel.yaml was not found. {} or newer is "
+                    "required".format(ruamel_min_version))
+                sys.exit(1)
+            elif ruamel_yaml_version < ruamel_min_version:
+                print("ERROR: ruamel.yaml is an incompatible version: Found "
+                    "{}, but {} or newer is required.".format(
+                        ruamel_yaml_version, ruamel_min_version))
+                sys.exit(1)
 
     if warn_no_python:
         if env['python_package'] == 'default':
@@ -1309,20 +1309,28 @@ if env['python_package'] != 'none':
             print('ERROR: Could not execute the Python interpreter {!r}'.format(
                 env['python_cmd']))
             sys.exit(1)
+    elif python_version < python_min_version:
+        msg = ("{}: Python version is incompatible. Found {} but {} "
+               "or newer is required")
+        if env["python_package"] in ("minimal", "full"):
+            print(msg.format("ERROR", python_version, python_min_version))
+            sys.exit(1)
+        elif env["python_package"] == "default":
+            print(msg.format("WARNING", python_version, python_min_version))
+            env["python_package"] = "none"
     elif env['python_package'] == 'minimal':
+        # If the minimal package was specified, no further checking
+        # needs to be done
         print('INFO: Building the minimal Python package for Python {}'.format(python_version))
     else:
-        warn_no_full_package = False
-        if len(info) > 3:
-            print("WARNING: Unexpected output while checking Python / Numpy / Cython versions:")
-            print('| ' + '\n| '.join(info[3:]))
 
-        if python_version < python_min_version:
-            print("WARNING: Python version is incompatible with the full Python module: "
-                "Found {0} but {1} or newer is required".format(
-                python_version, python_min_version))
-            warn_no_full_package = True
-        elif python_version >= LooseVersion("3.8"):
+        if len(info) > expected_output_lines:
+            print("WARNING: Unexpected output while checking Python "
+                  "dependency versions:")
+            print('| ' + '\n| '.join(info[expected_output_lines:]))
+
+        warn_no_full_package = False
+        if python_version >= parse_version("3.8"):
             # Reset the minimum Cython version if the Python version is 3.8 or higher
             # Due to internal changes in the CPython API, more recent versions of
             # Cython are necessary to build for Python 3.8. There is nothing Cantera
@@ -1330,38 +1338,39 @@ if env['python_package'] != 'none':
             # version bump is used to produce a more useful/actionable error message
             # for users than the compilation errors that result from using
             # Cython < 0.29.12.
-            cython_min_version = LooseVersion("0.29.12")
+            cython_min_version = parse_version("0.29.12")
 
-        if numpy_version == LooseVersion('0.0.0'):
+        if numpy_version == parse_version('0.0.0'):
             print("NumPy not found.")
             warn_no_full_package = True
-        elif numpy_version < numpy_min_test_version:
-            print("WARNING: The installed version of Numpy is not tested and "
-                  "support is not guaranteed. Found {0} but {1} or newer is preferred".format(
-                  numpy_version, numpy_min_test_version))
+        elif numpy_version < numpy_min_version:
+            print("WARNING: NumPy is an incompatible version: "
+                  "Found {0} but {1} or newer is required".format(
+                  numpy_version, numpy_min_version))
+            warn_no_full_package = True
         else:
             print('INFO: Using NumPy version {0}.'.format(numpy_version))
 
-        if cython_version == LooseVersion('0.0.0'):
+        if cython_version == parse_version('0.0.0'):
             print("Cython not found.")
             warn_no_full_package = True
         elif cython_version < cython_min_version:
             print("WARNING: Cython is an incompatible version: "
                   "Found {0} but {1} or newer is required.".format(
-                    cython_version, cython_min_version))
+                  cython_version, cython_min_version))
             warn_no_full_package = True
         else:
             print('INFO: Using Cython version {0}.'.format(cython_version))
 
         if warn_no_full_package:
+            msg = ('{}: Unable to build the full Python package because compatible '
+                   'versions of Python, Numpy, and Cython could not be found.')
             if env['python_package'] == 'default':
-                print('WARNING: Unable to build the full Python package because compatible '
-                    'versions of Python, Numpy, and Cython could not be found.')
+                print(msg.format("WARNING"))
                 print('INFO: Building the minimal Python package for Python {}'.format(python_version))
                 env['python_package'] = 'minimal'
             else:
-                print('ERROR: Unable to build the full Python package because compatible '
-                    'versions of Python, Numpy, and Cython could not be found.')
+                print(msg.format("ERROR"))
                 sys.exit(1)
         else:
             print('INFO: Building the full Python package for Python {0}'.format(python_version))
@@ -1410,6 +1419,7 @@ env['debian'] = any(name.endswith('dist-packages') for name in sys.path)
 
 # Directories where things will be after actually being installed. These
 # variables are the ones that are used to populate header files, scripts, etc.
+env['prefix'] = os.path.normpath(env['prefix'])
 env['ct_installroot'] = env['prefix']
 env['ct_libdir'] = pjoin(env['prefix'], env['libdirname'])
 env['ct_bindir'] = pjoin(env['prefix'], 'bin')
@@ -1642,7 +1652,7 @@ linkSharedLibs = ['cantera_shared']
 
 if env['system_sundials'] == 'y':
     env['sundials_libs'] = ['sundials_cvodes', 'sundials_ida', 'sundials_nvecserial']
-    if env['use_lapack'] and sundials_ver >= LooseVersion('3.0'):
+    if env['use_lapack'] and sundials_ver >= parse_version('3.0'):
         if env.get('has_sundials_lapack'):
             env['sundials_libs'].extend(('sundials_sunlinsollapackdense',
                                          'sundials_sunlinsollapackband'))
@@ -1732,7 +1742,7 @@ def postBuildMessage(target, source, env):
         print("- To install, type 'scons install'.")
         print("- To create a Windows MSI installer, type 'scons msi'.")
     else:
-        print("- To install, type '[sudo] scons install'.")
+        print("- To install, type 'scons install'.")
     print("*******************************************************")
 
 finish_build = env.Command('finish_build', [], postBuildMessage)
@@ -1767,6 +1777,9 @@ def postInstallMessage(target, source, env):
         install_message += indent(textwrap.dedent("""
             Python package (cantera)    {python_module_loc!s}
             Python samples              {python_example_loc!s}""".format(**env_dict)), '  ')
+    elif env['python_package'] == 'minimal':
+        install_message += indent(textwrap.dedent("""
+            minimal Python module       {python_module_loc!s}""".format(**env_dict)), '  ')
 
     if env['matlab_toolbox'] == 'y':
         env['matlab_sample_loc'] = pjoin(env['ct_sampledir'], 'matlab')
@@ -1781,15 +1794,18 @@ def postInstallMessage(target, source, env):
         """.format(**env_dict))
 
     if os.name != 'nt':
+        env['setup_cantera'] = pjoin(env['ct_bindir'], 'setup_cantera')
+        env['setup_cantera_csh'] = pjoin(env['ct_bindir'], 'setup_cantera.csh')
         install_message += textwrap.dedent("""
+
             Setup scripts to configure the environment for Cantera are at:
 
-              setup script (bash)         {ct_bindir!s}/setup_cantera
-              setup script (csh/tcsh)     {ct_bindir!s}/setup_cantera.csh
+              setup script (bash)         {setup_cantera!s}
+              setup script (csh/tcsh)     {setup_cantera_csh!s}
 
             It is recommended that you run the script for your shell by typing:
 
-              source {ct_bindir!s}/setup_cantera
+              source {setup_cantera!s}
 
             before using Cantera, or else include its contents in your shell login script.
         """.format(**env_dict))

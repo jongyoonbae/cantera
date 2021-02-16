@@ -31,16 +31,6 @@ class Array2D;
 class Arrhenius
 {
 public:
-    //! return the rate coefficient type.
-    /*!
-     * @deprecated To be removed after Cantera 2.5.
-     */
-    static int type() {
-        warn_deprecated("Arrhenius::type()",
-            "To be removed after Cantera 2.5.");
-        return ARRHENIUS_REACTION_RATECOEFF_TYPE;
-    }
-
     //! Default constructor.
     Arrhenius();
 
@@ -125,15 +115,6 @@ class SurfaceArrhenius
 {
 
 public:
-    /*!
-     * @deprecated To be removed after Cantera 2.5.
-     */
-    static int type() {
-        warn_deprecated("SurfaceArrhenius::type()",
-            "To be removed after Cantera 2.5.");
-        return SURF_ARRHENIUS_REACTION_RATECOEFF_TYPE;
-    }
-
     SurfaceArrhenius();
     explicit SurfaceArrhenius(double A, double b, double Ta);
 
@@ -162,7 +143,7 @@ public:
     }
 
     /**
-     * Update the value the rate constant.
+     * Update the value of the rate constant.
      *
      * This function returns the actual value of the rate constant. It can be
      * safely called for negative values of the pre-exponential factor.
@@ -205,8 +186,8 @@ protected:
 /*!
  * Given two rate expressions at two specific pressures:
  *
- *   * \f$ P_1: k_1(T) = A_1 T^{b_1} e^{E_1 / RT} \f$
- *   * \f$ P_2: k_2(T) = A_2 T^{b_2} e^{E_2 / RT} \f$
+ *   * \f$ P_1: k_1(T) = A_1 T^{b_1} e^{-E_1 / RT} \f$
+ *   * \f$ P_2: k_2(T) = A_2 T^{b_2} e^{-E_2 / RT} \f$
  *
  * The rate at an intermediate pressure \f$ P_1 < P < P_2 \f$ is computed as
  * \f[
@@ -221,16 +202,6 @@ protected:
 class Plog
 {
 public:
-    //! return the rate coefficient type.
-    /*!
-     * @deprecated To be removed after Cantera 2.5.
-     */
-    static int type() {
-        warn_deprecated("Plog::type()",
-            "To be removed after Cantera 2.5.");
-        return PLOG_REACTION_RATECOEFF_TYPE;
-    }
-
     //! Default constructor.
     Plog() {}
 
@@ -355,16 +326,6 @@ protected:
 class ChebyshevRate
 {
 public:
-    //! return the rate coefficient type.
-    /*!
-     * @deprecated To be removed after Cantera 2.5.
-     */
-    static int type() {
-        warn_deprecated("ChebyshevRate::type()",
-            "To be removed after Cantera 2.5.");
-        return CHEBYSHEV_REACTION_RATECOEFF_TYPE;
-    }
-
     //! Default constructor.
     ChebyshevRate() {}
 

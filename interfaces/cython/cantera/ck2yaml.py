@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # encoding: utf-8
 
 # This file is part of Cantera. See License.txt in the top-level directory or
@@ -43,13 +43,11 @@ used to add to the file description, or to define custom fields that are
 included in the YAML output.
 """
 
-from collections import defaultdict, OrderedDict
 import logging
 import os.path
 import sys
 import numpy as np
 import re
-import itertools
 import getopt
 import textwrap
 from email.utils import formatdate
@@ -58,6 +56,21 @@ try:
     import ruamel_yaml as yaml
 except ImportError:
     from ruamel import yaml
+
+# yaml.version_info is a tuple with the three parts of the version
+yaml_version = yaml.version_info
+# We choose ruamel.yaml 0.15.34 as the minimum version
+# since it is the highest version available in the Ubuntu
+# 18.04 repositories and seems to work. Older versions such as
+# 0.13.14 on CentOS7 and 0.10.23 on Ubuntu 16.04 raise an exception
+# that they are missing the RoundTripRepresenter
+yaml_min_version = (0, 15, 34)
+if yaml_version < yaml_min_version:
+    raise RuntimeError(
+        "The minimum supported version of ruamel.yaml is 0.15.34. If you "
+        "installed ruamel.yaml from your operating system's package manager, "
+        "please install an updated version using pip or conda."
+    )
 
 BlockMap = yaml.comments.CommentedMap
 
@@ -151,6 +164,9 @@ class InputError(Exception):
     the exceptional behavior.
     """
     def __init__(self, message, *args, **kwargs):
+        message += ("\nPlease check https://cantera.org/tutorials/"
+                   "ck2yaml-tutorial.html#debugging-common-errors-in-ck-files"
+                   "\nfor the correct Chemkin syntax.")
         if args or kwargs:
             super().__init__(message.format(*args, **kwargs))
         else:
@@ -446,7 +462,7 @@ class SurfaceRate(KineticsModel):
                 # base reaction
                 if self.rate.Ea[1] != self.rate.parser.output_energy_units:
                     E = '{} {}'.format(E, self.rate.Ea[1])
-                    covdeps[species] = FlowList([A, m, E])
+                covdeps[species] = FlowList([A, m, E])
             output['coverage-dependencies'] = covdeps
 
 
@@ -654,9 +670,9 @@ class Sri:
 
     def reduce(self, output):
         sri = FlowMap([('A', self.A), ('B', self.B), ('C', self.C)])
-        if self.D:
+        if self.D is not None:
             sri['D'] = self.D
-        if self.E:
+        if self.E is not None:
             sri['E'] = self.E
 
         output['SRI'] = sri
@@ -675,8 +691,7 @@ class TransportData:
                 "Bad geometry flag '{}' for species '{}', is the flag a float "
                 "or character? It should be an integer.", geometry, label)
         if geometry not in (0, 1, 2):
-            raise InputError("Bad geometry flag '{}' for species '{}'",
-                             geometry, label)
+            raise InputError("Bad geometry flag '{}' for species '{}'.", geometry, label)
 
         self.geometry = self.geometry_flags[int(geometry)]
         self.well_depth = float(well_depth)
@@ -872,7 +887,18 @@ class Parser:
 
         if not composition:
             raise InputError("Error parsing elemental composition for "
-                             "species '{}'", species)
+                             "species '{}'.", species)
+
+        for symbol in composition.keys():
+            # Some CHEMKIN input files may have quantities of elements with
+            # more than 3 digits. This violates the column-based input format
+            # standard, so the entry cannot be read and we need to raise a
+            # more useful error message.
+            if any(map(str.isdigit, symbol)) and symbol not in self.elements:
+                raise InputError("Error parsing elemental composition for "
+                                 "species thermo entry:\n{}\nElement amounts "
+                                 "can have no more than 3 digits.",
+                                 "".join(lines))
 
         # Extract the NASA polynomial coefficients
         # Remember that the high-T polynomial comes first!
@@ -941,7 +967,7 @@ class Parser:
                           fortFloat(C[64:80])]
                 polys.append((Trange, coeffs))
         except (IndexError, ValueError) as err:
-            raise InputError('Error while reading thermo entry for species {}:\n{}',
+            raise InputError('Error while reading thermo entry for species {}:\n{}.',
                              species, err)
 
         thermo = Nasa9(data=polys, note=note)
@@ -1291,7 +1317,7 @@ class Parser:
                  surface]
         if sum(bool(t) for t in tests) > 1:
             raise InputError('Reaction {} contains parameters for more than '
-                'one reaction type.', original_reaction)
+                             'one reaction type.', original_reaction)
 
         if cheb_coeffs:
             if Tmin is None or Tmax is None:
@@ -1330,7 +1356,7 @@ class Parser:
         elif reaction.third_body:
             raise InputError('Reaction equation implies pressure '
                 'dependence but no alternate rate parameters (i.e. HIGH or '
-                'LOW) were given for reaction {}', reaction)
+                'LOW) were given for reaction {}.', reaction)
         elif surface:
             reaction.kinetics = SurfaceRate(rate=arrhenius,
                                             coverages=coverages,
@@ -1761,6 +1787,9 @@ class Parser:
                             revReaction.line_number = line_number
                             reactions.append(revReaction)
 
+                    for index, reaction in enumerate(reactions):
+                        reaction.index = index + 1
+
                 elif tokens[0].upper().startswith('TRAN'):
                     inHeader = False
                     line, comment = readline()
@@ -1792,9 +1821,6 @@ class Parser:
 
         for h in header:
             self.header_lines.append(h[indent:])
-
-        for index, reaction in enumerate(self.reactions):
-            reaction.index = index + 1
 
         if transportLines:
             self.parse_transport_data(transportLines, path, transport_start_line)
@@ -1872,7 +1898,7 @@ class Parser:
             metadata = BlockMap([
                 ('generator', 'ck2yaml'),
                 ('input-files', FlowList(files)),
-                ('cantera-version', '2.5.0a4'),
+                ('cantera-version', '2.6.0a1'),
                 ('date', formatdate(localtime=True)),
             ])
             if desc.strip():
